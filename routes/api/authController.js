@@ -21,6 +21,21 @@ class Kakao {
     this.code = code;
     // userInfo
     this.userInfoUrl = 'https://kapi.kakao.com/v2/user/me';
+    this.userInfoMethod = 'post';
+  }
+}
+
+class Google {
+  constructor(code) {
+    this.url = 'https://oauth2.googleapis.com/token';
+    this.clientID = process.env.GOOGLE_CLIENT_ID;
+    this.clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    this.redirectUri = 'http://localhost:3001/oauth/callback/google';
+    this.grant_type = 'authorization_code';
+    this.code = code;
+    // userInfo
+    this.userInfoUrl = '';
+    this.userInfoMethod = 'get';
   }
 }
 
@@ -55,6 +70,7 @@ const getAccessToken = async (options) => {
         client_id: options.clientID,
         client_secret: options.clientSecret,
         redirectUri: options.redirectUri,
+        redirect_uri: options.redirectUri,
         code: options.code,
       }),
     }).then((res) => res.json());
@@ -62,16 +78,20 @@ const getAccessToken = async (options) => {
     logger.info('error', e);
   }
 };
-
-const getUserInfo = async (url, access_token) => {
+// authorization: `token ${accessToken}`,
+// accept: 'application/json'
+const getUserInfo = async (method, url, access_token) => {
   try {
     return await fetch(url, {
-      method: 'POST',
+      method: method,
       headers: {
         'Content-type': 'application/x-www-form-urlencoded;charset=utf-8',
         Authorization: `Bearer ${access_token}`,
       },
-    }).then((res) => res.json());
+    }).then((res) => {
+      console.log(res);
+      return res.json();
+    });
   } catch (e) {
     logger.info('error', e);
   }
@@ -84,38 +104,67 @@ router.get('/callback/:coperation', async (req, res) => {
     let options;
 
     switch (coperation) {
-      case 'GOOGLE':
+      case 'google':
+        options = new Google(authorization_code);
         break;
-      case 'NAVER':
+
+      case 'naver':
         break;
+
       case 'kakao':
         options = new Kakao(authorization_code);
+        break;
+
+      case 'apple':
+        options = new Google(authorization_code);
         break;
 
       default:
         break;
     }
+
     console.log('options= ', options);
     const tokenInfo = await getAccessToken(options);
     console.log('token = ', tokenInfo);
+    if (!tokenInfo) return;
+    if (coperation === 'google')
+      options.userInfoUrl = `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokenInfo.access_token}`;
+
     const userInfo = await getUserInfo(
+      opthis.userInfoMethod,
       options.userInfoUrl,
       tokenInfo.access_token,
     );
+
     console.log('userInfo = ', userInfo);
 
     //로그인 되었 을 경우
     if (userInfo) {
-      const { kakao_account, id } = userInfo;
-      if (id && kak1ao_account) {
-        const jwtToken = token.generateToken(kakao_account);
-        console.log('jwtToken = ', jwtToken);
-        let responseData = {
-          success: true,
-          userInfo,
-          jwt: jwtToken,
-        };
-        return res.status(200).json(responseData);
+      if (coperation === 'kakao') {
+        const { kakao_account, id } = userInfo;
+        if (id && kakao_account) {
+          const jwtToken = token.generateToken(kakao_account);
+
+          let responseData = {
+            success: true,
+            userInfo,
+            jwt: jwtToken,
+          };
+          return res.status(200).json(responseData);
+        }
+      }
+      if (coperation === 'google') {
+        const { id, email, verified_email, pictre } = userInfo;
+        if (id && email) {
+          const jwtToken = token.generateToken({ userInfo });
+
+          let responseData = {
+            success: true,
+            userInfo,
+            jwt: jwtToken,
+          };
+          return res.status(200).json(responseData);
+        }
       }
     }
   } catch (e) {
