@@ -39,6 +39,19 @@ class Google {
   }
 }
 
+class Naver {
+  constructor(code) {
+    this.url = '';
+    this.clientID = process.env.NAVER_CLIENT_ID;
+    this.clientSecret = process.env.NAVER_CLIENT_SECRET;
+    this.redirectUri = 'http://localhost:3001/oauth/callback/naver';
+    this.grant_type = 'authorization_code';
+    this.code = code;
+    // userInfo
+    this.userInfoUrl = 'https://openapi.naver.com/v1/nid/me';
+    this.userInfoMethod = 'get';
+  }
+}
 // /    GET /api/auth/check
 // const check = (req, res) => {
 //   console.log('check in');
@@ -109,6 +122,7 @@ router.get('/callback/:coperation', async (req, res) => {
         break;
 
       case 'naver':
+        options = new Naver(authorization_code);
         break;
 
       case 'kakao':
@@ -116,11 +130,27 @@ router.get('/callback/:coperation', async (req, res) => {
         break;
 
       case 'apple':
-        options = new Google(authorization_code);
         break;
 
       default:
+        ccc;
         break;
+    }
+
+    if (coperation === 'naver') {
+      const userInfo = await getUserInfo(
+        options.userInfoMethod,
+        options.userInfoUrl,
+        authorization_code, //sdk login시 client에서 access_token이 바로 전송됨
+      );
+      console.log('userInfo ', userInfo);
+      const jwtToken = token.generateToken({ userInfo });
+      let responseData = {
+        success: true,
+        userInfo,
+        jwt: jwtToken,
+      };
+      return res.status(200).json(responseData);
     }
 
     console.log('options= ', options);
@@ -131,7 +161,7 @@ router.get('/callback/:coperation', async (req, res) => {
       options.userInfoUrl = `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${tokenInfo.access_token}`;
 
     const userInfo = await getUserInfo(
-      opthis.userInfoMethod,
+      options.userInfoMethod,
       options.userInfoUrl,
       tokenInfo.access_token,
     );
