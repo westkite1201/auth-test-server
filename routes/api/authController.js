@@ -1,7 +1,9 @@
 let express = require('express');
 let router = express.Router();
+const jwt = require('../../lib/jwt-util');
+const redisClient = require('../../lib/redis');
+const refresh = require('../../lib/refresh');
 const token = require('../../lib/token');
-//const crypto = require('crypto');
 const _ = require('lodash');
 let bcrypt = require('bcrypt-nodejs');
 const authMiddleware = require('../../middlewares/auth');
@@ -11,6 +13,8 @@ const winston = require('winston');
 const logger = winston.createLogger();
 const qs = require('qs');
 const fetch = require('node-fetch');
+
+const authJwt = require('../../middlewares/auth');
 
 class Kakao {
   constructor(code) {
@@ -91,6 +95,9 @@ const getAccessToken = async (options) => {
     logger.info('error', e);
   }
 };
+
+//
+
 // authorization: `token ${accessToken}`,
 // accept: 'application/json'
 const getUserInfo = async (method, url, access_token) => {
@@ -110,6 +117,11 @@ const getUserInfo = async (method, url, access_token) => {
   }
 };
 
+/* 소셜 로그인시 
+ 1. 소셜 로그인시 가입이 되어있는지 확인
+ 1-1. 가입이 되어있다면 가입 이메일로 로그인
+ 1-2. 가입이 안되어있다면 가입시켜주고 로그인 시켜주기  
+*/
 router.get('/callback/:coperation', async (req, res) => {
   try {
     let coperation = req.params.coperation;
@@ -133,7 +145,6 @@ router.get('/callback/:coperation', async (req, res) => {
         break;
 
       default:
-        ccc;
         break;
     }
 
@@ -184,14 +195,49 @@ router.get('/callback/:coperation', async (req, res) => {
         }
       }
       if (coperation === 'google') {
-        const { id, email, verified_email, pictre } = userInfo;
-        if (id && email) {
-          const jwtToken = token.generateToken({ userInfo });
+        const { id, email, verified_email, picture } = userInfo;
 
-          let responseData = {
+        if (id && email) {
+          //1. 회원가입 여부 확인
+          const memberRow = await authDaoNew.getEmailIsAlreadyExist(email);
+          let jwtToken = null;
+          let refreshToken = null;
+          //회원 가입 안되어있을시
+          if (memberRow[0].EXISTFLAG !== 'EXIST') {
+            //회원 가입후 토큰 발급
+            const userData = {
+              mem_username: '',
+              mem_userid: id,
+              mem_email: email,
+              mem_password: '',
+              mem_social: 'google',
+            };
+            console.log(' userData ', userData);
+            const signUpResponse = await authDaoNew.setMemberSignUp(userData);
+            if (!signUpResponse) return 'error';
+            if (signUpResponse) {
+              jwtToken = jwt.sign({
+                id: id,
+                email: email,
+              });
+              refreshToken = jwt.refresh();
+            }
+          } else if (memberRow[0].EXISTFLAG === 'EXIST') {
+            //토큰 발급
+            jwtToken = jwt.sign({
+              id: id,
+              email: email,
+            });
+            refreshToken = jwt.refresh();
+          }
+          // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
+          redisClient.set(id, refreshToken);
+
+          const responseData = {
             success: true,
             userInfo,
-            jwt: jwtToken,
+            accessToken: jwtToken,
+            refreshToken: refreshToken,
           };
           return res.status(200).json(responseData);
         }
@@ -246,6 +292,15 @@ checkValidationPassword = (password, res) => {
   }
   return true;
 };
+
+/* refresh token 발행을 위한 라우터  */
+router.get('/refresh', refresh);
+
+/* 
+  profile
+  middleware 적용 
+*/
+router.get('/profile', authJwt, async (req, res) => {});
 
 /* local 회원가입 */
 router.post('/setMemberSignup', async (req, res) => {
