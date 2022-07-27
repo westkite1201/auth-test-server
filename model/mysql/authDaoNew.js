@@ -41,7 +41,7 @@ const getEmailIsAlreadyExist = async (mem_email) => {
   SELECT CASE WHEN count(mem_email) > 0 THEN 'EXIST'
             ELSE 'NONE'
             END AS EXISTFLAG
-  FROM ODI_MEMBER
+  FROM MEMBER
   WHERE mem_email = ?
   `;
   const connection = await dbHelpers.pool.getConnection(async (conn) => conn);

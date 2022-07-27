@@ -1,7 +1,9 @@
+require('dotenv').config();
 /**
  * MySQL helper functions
  */
 const mysql = require('mysql2/promise');
+
 /* Step 1, create DB Pool */
 const pool = mysql.createPool({
   user: process.env.MYSQL_USER,

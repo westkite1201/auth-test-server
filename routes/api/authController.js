@@ -13,7 +13,7 @@ const winston = require('winston');
 const logger = winston.createLogger();
 const qs = require('qs');
 const fetch = require('node-fetch');
-
+const authDaoNew = require('../../model/mysql/authDaoNew');
 const authJwt = require('../../middlewares/auth');
 
 class Kakao {
@@ -44,13 +44,14 @@ class Google {
 }
 
 class Naver {
-  constructor(code) {
-    this.url = '';
+  constructor(code, state) {
+    this.url = 'https://nid.naver.com/oauth2.0/token';
     this.clientID = process.env.NAVER_CLIENT_ID;
-    this.clientSecret = process.env.NAVER_CLIENT_SECRET;
+    this.clientSecret = process.env.NAVER_SECRET;
     this.redirectUri = 'http://localhost:3001/oauth/callback/naver';
     this.grant_type = 'authorization_code';
     this.code = code;
+    this.state = state;
     // userInfo
     this.userInfoUrl = 'https://openapi.naver.com/v1/nid/me';
     this.userInfoMethod = 'get';
@@ -89,6 +90,7 @@ const getAccessToken = async (options) => {
         redirectUri: options.redirectUri,
         redirect_uri: options.redirectUri,
         code: options.code,
+        state: options?.state,
       }),
     }).then((res) => res.json());
   } catch (e) {
@@ -126,6 +128,7 @@ router.get('/callback/:coperation', async (req, res) => {
   try {
     let coperation = req.params.coperation;
     let authorization_code = req.query.code;
+
     let options;
 
     switch (coperation) {
@@ -134,7 +137,8 @@ router.get('/callback/:coperation', async (req, res) => {
         break;
 
       case 'naver':
-        options = new Naver(authorization_code);
+        let state = req.query.state;
+        options = new Naver(authorization_code, state);
         break;
 
       case 'kakao':
@@ -146,22 +150,6 @@ router.get('/callback/:coperation', async (req, res) => {
 
       default:
         break;
-    }
-
-    if (coperation === 'naver') {
-      const userInfo = await getUserInfo(
-        options.userInfoMethod,
-        options.userInfoUrl,
-        authorization_code, //sdk login시 client에서 access_token이 바로 전송됨
-      );
-      console.log('userInfo ', userInfo);
-      const jwtToken = token.generateToken({ userInfo });
-      let responseData = {
-        success: true,
-        userInfo,
-        jwt: jwtToken,
-      };
-      return res.status(200).json(responseData);
     }
 
     console.log('options= ', options);
@@ -181,6 +169,24 @@ router.get('/callback/:coperation', async (req, res) => {
 
     //로그인 되었 을 경우
     if (userInfo) {
+      if (coperation === 'naver') {
+        console.log('userInfo ', userInfo);
+        const { resultcode, message, response } = userInfo;
+        if (resultcode === '00' && message === 'success') {
+          const jwtToken = jwt.sign({
+            id: id,
+            email: email,
+          });
+
+          let responseData = {
+            success: true,
+            userInfo,
+            jwt: jwtToken,
+          };
+          return res.status(200).json(responseData);
+        }
+      }
+
       if (coperation === 'kakao') {
         const { kakao_account, id } = userInfo;
         if (id && kakao_account) {
@@ -200,10 +206,12 @@ router.get('/callback/:coperation', async (req, res) => {
         if (id && email) {
           //1. 회원가입 여부 확인
           const memberRow = await authDaoNew.getEmailIsAlreadyExist(email);
+          console.log('member log', memberRow);
           let jwtToken = null;
           let refreshToken = null;
           //회원 가입 안되어있을시
           if (memberRow[0].EXISTFLAG !== 'EXIST') {
+            console.log('가입되지 않은 회원입니다.');
             //회원 가입후 토큰 발급
             const userData = {
               mem_username: '',
@@ -223,6 +231,7 @@ router.get('/callback/:coperation', async (req, res) => {
               refreshToken = jwt.refresh();
             }
           } else if (memberRow[0].EXISTFLAG === 'EXIST') {
+            console.log('가입된 회원입니다.');
             //토큰 발급
             jwtToken = jwt.sign({
               id: id,
@@ -230,14 +239,24 @@ router.get('/callback/:coperation', async (req, res) => {
             });
             refreshToken = jwt.refresh();
           }
+
           // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
-          redisClient.set(id, refreshToken);
+          //await redisClient.set(id, refreshToken);
+          // res.setHeader(
+          //   'Set-Cookie',
+          //   `access_token=${jwtToken}; path=/; expires=${new Date(
+          //     Date.now() + 60 * 60 * 24 * 1000 * 3, //3일
+          //   )}; httponly`,
+          // );
+          res.cookie('refresh-token', refreshToken, {
+            maxAge: 1000 * 60 * 60 * 24 * 1,
+            httpOnly: true,
+          });
 
           const responseData = {
             success: true,
             userInfo,
             accessToken: jwtToken,
-            refreshToken: refreshToken,
           };
           return res.status(200).json(responseData);
         }
@@ -296,6 +315,23 @@ checkValidationPassword = (password, res) => {
 /* refresh token 발행을 위한 라우터  */
 router.get('/refresh', refresh);
 
+router.get('/test', async (req, res) => {
+  // res.setHeader(
+  //   'Set-Cookie',
+  //   `access_token=dsadasd; path=/; expires=${new Date(
+  //     Date.now() + 60 * 60 * 24 * 1000 * 3, //3일
+  //   )}; httponly`,
+  // );
+
+  // res.cookie('hello', 'value', {
+  //   maxAge: 10000,
+  // });
+  res.cookie('access-tokens', 'abc', {
+    maxAge: 1000 * 60 * 60 * 24 * 1,
+    httpOnly: true,
+  });
+  res.send('hello updated.');
+});
 /* 
   profile
   middleware 적용 

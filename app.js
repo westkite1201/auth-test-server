@@ -7,20 +7,18 @@ require('moment-timezone');
 let bodyParser = require('body-parser');
 let indexRouter = require('./routes/index');
 let authRouter = require('./routes/api/authController');
-
 // let corsOption = {
 //   origin: 'http://localhost:3030',
 //   credentials: true,
 // };
-let cors = require('cors')();
-
+let cors = require('cors');
 let app = express();
-require('dotenv').config();
+
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 app.use(logger('dev'));
-app.use(cors);
+app.use(cors({ origin: true, credentials: true }));
 // app.use(express.json());
 // app.use(express.urlencoded({ extended: true }));
 
