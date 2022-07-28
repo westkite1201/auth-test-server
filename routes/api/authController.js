@@ -2,7 +2,7 @@ let express = require('express');
 let router = express.Router();
 const jwt = require('../../lib/jwt-util');
 const redisClient = require('../../lib/redis');
-const refresh = require('../../lib/refresh');
+const { refresh, refreshPage } = require('../../lib/refresh');
 const _ = require('lodash');
 const authMiddleware = require('../../middlewares/auth');
 const helper = require('../../lib/helpers');
@@ -257,7 +257,7 @@ router.get('/callback/:coperation', async (req, res) => {
               id,
               email: '',
               social: 'kakao',
-              isExist: true,
+              isExist: false,
             });
             jwtToken = access;
             refreshToken = refresh;
@@ -290,7 +290,7 @@ router.get('/callback/:coperation', async (req, res) => {
               id,
               email,
               social: 'google',
-              isExist: true,
+              isExist: false,
             });
             jwtToken = access;
             refreshToken = refresh;
@@ -299,13 +299,20 @@ router.get('/callback/:coperation', async (req, res) => {
               id,
               email,
               social: 'google',
-              isExist: false,
+              isExist: true,
             });
             jwtToken = access;
             refreshToken = refresh;
           }
+
           // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
-          //await redisClient.set(id, refreshToken);
+
+          //id 값이 중복되는 것을 방지하기 위해
+          //id_social값을 key로 사용한다.
+          await redisClient.set(id + '_google', refreshToken);
+          // 발급한 refresh token을 redis에 key를 user의 refreshToken로 하여 저장합니다.
+          await redisClient.set(refreshToken, id + '_google');
+
           return returnResponse({ res, jwtToken, refreshToken });
         }
       }
