@@ -2,7 +2,7 @@ let express = require('express');
 let router = express.Router();
 const jwt = require('../../lib/jwt-util');
 const redisClient = require('../../lib/redis');
-const { refresh, refreshPage } = require('../../lib/refresh');
+const { refresh, authorizationRequest } = require('../../lib/refresh');
 const _ = require('lodash');
 const authMiddleware = require('../../middlewares/auth');
 const helper = require('../../lib/helpers');
@@ -146,7 +146,12 @@ async function signUp({ id, email, social, isExist }) {
 }
 
 function returnResponse({ res, jwtToken, refreshToken }) {
-  res.cookie('refresh-token', refreshToken, {
+  res.cookie('access_token', jwtToken, {
+    maxAge: 1000 * 60 * 60,
+    httpOnly: true,
+  });
+
+  res.cookie('refresh_token', refreshToken, {
     maxAge: 1000 * 60 * 60 * 24 * 1,
     httpOnly: true,
   });
@@ -156,6 +161,7 @@ function returnResponse({ res, jwtToken, refreshToken }) {
     message: resMessage.SIGN_IN_SUCCESS,
     accessToken: jwtToken,
   };
+  console.log('responseData = ', responseData);
   return res.json(responseData);
 }
 /* 소셜 로그인시 
@@ -237,7 +243,7 @@ router.get('/callback/:coperation', async (req, res) => {
             refreshToken = refresh;
           }
           // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
-          //await redisClient.set(id, refreshToken);
+          await redisClient.set(id + '_naver', refreshToken);
           return returnResponse({ res, jwtToken, refreshToken });
         }
       }
@@ -272,7 +278,7 @@ router.get('/callback/:coperation', async (req, res) => {
             refreshToken = refresh;
           }
           // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
-          //await redisClient.set(id, refreshToken);
+          await redisClient.set(id + '_kakao', refreshToken);
           return returnResponse({ res, jwtToken, refreshToken });
         }
       }
@@ -310,8 +316,6 @@ router.get('/callback/:coperation', async (req, res) => {
           //id 값이 중복되는 것을 방지하기 위해
           //id_social값을 key로 사용한다.
           await redisClient.set(id + '_google', refreshToken);
-          // 발급한 refresh token을 redis에 key를 user의 refreshToken로 하여 저장합니다.
-          await redisClient.set(refreshToken, id + '_google');
 
           return returnResponse({ res, jwtToken, refreshToken });
         }
@@ -343,6 +347,27 @@ router.get('/test', async (req, res) => {
   res.send('hello updated.');
 });
 
+router.get('/userInfo', async (req, res) => {
+  const authorization = await authorizationRequest(req);
+  console.log('authorization = ', authorization);
+  if (authorization.ok) {
+    console.log(authorization.decoded);
+    const memberRow = await authDaoNew.getLoginData(authorization.decoded.id);
+    if (memberRow[0]) {
+      let responseData = {
+        code: statusCode.OK,
+        message: resMessage.SIGN_IN_SUCCESS,
+        data: memberRow[0],
+      };
+      res.json(responseData);
+      return;
+    }
+  }
+  res.json({
+    code: statusCode.UNAUTHORIZED,
+    message: resMessage.INVALID_TOKEN,
+  });
+});
 /* 
   profile
   middleware 적용 
