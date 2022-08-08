@@ -2,7 +2,11 @@ let express = require('express');
 let router = express.Router();
 const jwt = require('../../lib/jwt-util');
 const redisClient = require('../../lib/redis');
-const { refresh, authorizationRequest } = require('../../lib/refresh');
+const {
+  refresh,
+  refreshClinetSide,
+  authorizationRequest,
+} = require('../../lib/refresh');
 const _ = require('lodash');
 const authMiddleware = require('../../middlewares/auth');
 const helper = require('../../lib/helpers');
@@ -145,24 +149,47 @@ async function signUp({ id, email, social, isExist }) {
   return { jwtToken, refreshToken };
 }
 
-function returnResponse({ res, jwtToken, refreshToken }) {
-  res.cookie('access_token', jwtToken, {
-    maxAge: 1000 * 60 * 60,
-    httpOnly: true,
-  });
+// function returnResponse({ res, jwtToken, refreshToken }) {
+//   res.cookie('access_token', jwtToken, {
+//     maxAge: 60 * 1000,
+//     expires: false,
+//     httpOnly: true,
+//   });
 
-  res.cookie('refresh_token', refreshToken, {
-    maxAge: 1000 * 60 * 60 * 24 * 1,
-    httpOnly: true,
-  });
+//   res.cookie('refresh_token', refreshToken, {
+//     maxAge: 1000 * 60 * 60 * 24 * 1,
+//     httpOnly: true,
+//   });
+
+//   let responseData = {
+//     code: statusCode.OK,
+//     message: resMessage.SIGN_IN_SUCCESS,
+//     accessToken: jwtToken,
+//   };
+//   console.log('responseData = ', responseData);
+//   return responseData;
+// }
+
+function returnResponse({ res, jwtToken, refreshToken }) {
+  // res.cookie('access_token', jwtToken, {
+  //   maxAge: 60 * 1000,
+  //   expires: false,
+  //   httpOnly: true,
+  // });
+
+  // res.cookie('refresh_token', refreshToken, {
+  //   maxAge: 1000 * 60 * 60 * 24 * 1,
+  //   httpOnly: true,
+  // });
 
   let responseData = {
     code: statusCode.OK,
     message: resMessage.SIGN_IN_SUCCESS,
     accessToken: jwtToken,
+    refreshToken,
   };
   console.log('responseData = ', responseData);
-  return res.json(responseData);
+  return responseData;
 }
 /* 소셜 로그인시 
  1. 소셜 로그인시 가입이 되어있는지 확인
@@ -243,8 +270,9 @@ router.get('/callback/:coperation', async (req, res) => {
             refreshToken = refresh;
           }
           // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
-          await redisClient.set(id + '_naver', refreshToken);
-          return returnResponse({ res, jwtToken, refreshToken });
+          await redisClient.set(email, refreshToken);
+          const makedResponse = returnResponse({ res, jwtToken, refreshToken });
+          res.json(makedResponse);
         }
       }
 
@@ -278,8 +306,9 @@ router.get('/callback/:coperation', async (req, res) => {
             refreshToken = refresh;
           }
           // 발급한 refresh token을 redis에 key를 user의 id로 하여 저장합니다.
-          await redisClient.set(id + '_kakao', refreshToken);
-          return returnResponse({ res, jwtToken, refreshToken });
+          await redisClient.set(email, refreshToken);
+          const makedResponse = returnResponse({ res, jwtToken, refreshToken });
+          res.json(makedResponse);
         }
       }
       if (coperation === 'google') {
@@ -315,9 +344,10 @@ router.get('/callback/:coperation', async (req, res) => {
 
           //id 값이 중복되는 것을 방지하기 위해
           //id_social값을 key로 사용한다.
-          await redisClient.set(id + '_google', refreshToken);
+          await redisClient.set(email, refreshToken);
 
-          return returnResponse({ res, jwtToken, refreshToken });
+          const makedResponse = returnResponse({ res, jwtToken, refreshToken });
+          res.json(makedResponse);
         }
       }
     }
@@ -336,13 +366,28 @@ checkValidationPassword = (password, res) => {
   return true;
 };
 
+router.get('/test-refresh', async (req, res) => {
+  console.log('hello~');
+  res.status(401).json('crash');
+});
+
 /* refresh token 발행을 위한 라우터  */
-router.get('/refresh', refresh);
+router.get('/refresh', refreshClinetSide);
 
 router.get('/test', async (req, res) => {
   res.cookie('access-tokens', 'abc', {
     maxAge: 1000 * 60 * 60 * 24 * 1,
     httpOnly: true,
+  });
+  res.send('hello updated.');
+});
+
+router.get('/logout', async (req, res) => {
+  res.cookie('access_token', '', {
+    maxAge: 0,
+  });
+  res.cookie('refresh_token', '', {
+    maxAge: 0,
   });
   res.send('hello updated.');
 });

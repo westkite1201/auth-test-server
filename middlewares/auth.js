@@ -14,7 +14,7 @@ const authMiddleware = (req, res, next) => {
 
   // create a promise that decodes the token
   const p = new Promise((resolve, reject) => {
-    jwt.verify(token, req.app.get('jwt-secret'), (err, decoded) => {
+    jwt.verify(token, req.app.get('jwt'), (err, decoded) => {
       if (err) reject(err);
       resolve(decoded);
     });
