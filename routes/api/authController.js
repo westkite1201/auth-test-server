@@ -18,6 +18,7 @@ const authDaoNew = require('../../model/mysql/authDaoNew');
 const authJwt = require('../../middlewares/auth');
 const resMessage = require('../../lib/resMessage');
 const statusCode = require('../../lib/statusCode');
+const { API_CODE } = require('../../lib/statusCode');
 
 class Kakao {
   constructor(code) {
@@ -163,7 +164,7 @@ async function signUp({ id, email, social, isExist }) {
 
 //   let responseData = {
 //     code: statusCode.OK,
-//     message: resMessage.SIGN_IN_SUCCESS,
+//     reason: resMessage.SIGN_IN_SUCCESS,
 //     accessToken: jwtToken,
 //   };
 //   console.log('responseData = ', responseData);
@@ -183,11 +184,13 @@ function returnResponse({ res, jwtToken, refreshToken }) {
   // });
 
   let responseData = {
-    code: statusCode.OK,
-    message: resMessage.SIGN_IN_SUCCESS,
+    code: API_CODE.SUCCESS,
+    reason: resMessage.SUCCESS,
+    result: '',
     accessToken: jwtToken,
     refreshToken,
   };
+
   console.log('responseData = ', responseData);
   return responseData;
 }
@@ -241,8 +244,8 @@ router.get('/callback/:coperation', async (req, res) => {
     if (userInfo) {
       if (coperation === 'naver') {
         console.log('userInfo ', userInfo);
-        const { resultcode, message, response } = userInfo;
-        if (resultcode === '00' && message === 'success') {
+        const { resultcode, reason, response } = userInfo;
+        if (resultcode === '00' && reason === 'success') {
           //1. 회원가입 여부 확인
           const memberRow = await authDaoNew.getEmailIsAlreadyExist(email);
           const { EXISTFLAG } = memberRow[0];
@@ -347,6 +350,7 @@ router.get('/callback/:coperation', async (req, res) => {
           await redisClient.set(email, refreshToken);
 
           const makedResponse = returnResponse({ res, jwtToken, refreshToken });
+          console.log('makedResponse= ', makedResponse);
           res.json(makedResponse);
         }
       }
@@ -372,7 +376,7 @@ router.get('/test-refresh', async (req, res) => {
 });
 
 /* refresh token 발행을 위한 라우터  */
-router.get('/refresh', refreshClinetSide);
+router.get('/refresh', refresh);
 
 router.get('/test', async (req, res) => {
   res.cookie('access-tokens', 'abc', {
@@ -397,11 +401,14 @@ router.get('/userInfo', async (req, res) => {
   console.log('authorization = ', authorization);
   if (authorization.ok) {
     console.log(authorization.decoded);
-    const memberRow = await authDaoNew.getLoginData(authorization.decoded.id);
+    const memberRow = await authDaoNew.getLoginData(
+      authorization.decoded.email,
+    );
+    console.log('memberRow = ', memberRow);
     if (memberRow[0]) {
       let responseData = {
-        code: statusCode.OK,
-        message: resMessage.SIGN_IN_SUCCESS,
+        code: API_CODE.SUCCESS,
+        reason: resMessage.SUCCESS,
         data: memberRow[0],
       };
       res.json(responseData);
@@ -409,8 +416,9 @@ router.get('/userInfo', async (req, res) => {
     }
   }
   res.json({
-    code: statusCode.UNAUTHORIZED,
-    message: resMessage.INVALID_TOKEN,
+    code: API_CODE.INVALID_TOKEN,
+    reason: resMessage.INVALID_TOKEN,
+    result: '',
   });
 });
 /* 

@@ -61,7 +61,7 @@ const getEmailIsAlreadyExist = async (mem_email) => {
 };
 
 /*login , join  */
-const getLoginData = async (mem_id) => {
+const getLoginData = async (mem_email) => {
   let loginSql = `
       SELECT 
       mem_idx, 
@@ -70,14 +70,14 @@ const getLoginData = async (mem_id) => {
       mem_gb_cd ,
       mem_status
       FROM MEMBER
-      WHERE mem_userid = ?
+      WHERE mem_email = ?
     `;
 
   try {
     const connection = await dbHelpers.pool.getConnection(async (conn) => conn);
     try {
       //await connection.beginTransaction(); // START TRANSACTION
-      let [memberInfo] = await connection.query(loginSql, [mem_id]);
+      let [memberInfo] = await connection.query(loginSql, [mem_email]);
       await connection.commit(); // COMMIT
       connection.release();
       console.log('success Query SELECT');
